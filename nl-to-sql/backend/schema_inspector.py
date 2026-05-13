@@ -12,6 +12,7 @@ EXCLUDED_TABLES = [
 ]
 SKIP_SAMPLE_TYPES = {"BLOB", "BINARY", "BYTEA", "JSON"}
 TEXT_TYPE_TOKENS = {"VARCHAR", "TEXT", "CHAR"}
+MAX_SAMPLE_LIMIT = 100
 DATE_TOKENS = {"date", "created", "updated", "time", "at", "timestamp"}
 NUMERIC_TOKENS = {
     "amount",
@@ -108,7 +109,7 @@ class SchemaInspector:
                 return []
 
             limit_value = int(limit)
-            if limit_value <= 0:
+            if not 0 < limit_value <= MAX_SAMPLE_LIMIT:
                 return []
 
             safe_table = self._quote_identifier(table)
