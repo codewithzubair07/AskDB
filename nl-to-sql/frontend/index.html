@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AskDB</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d2e;
+      border-bottom: 1px solid #2d3748;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header .logo { font-size: 24px; }
+    header h1 { font-size: 20px; font-weight: 700; color: #7c3aed; }
+    header span { font-size: 13px; color: #64748b; margin-left: 8px; }
+    #db-badge {
+      margin-left: auto;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    #db-badge b { color: #34d399; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      height: calc(100vh - 61px);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      background: #1a1d2e;
+      border-right: 1px solid #2d3748;
+      overflow-y: auto;
+      padding: 20px 16px;
+    }
+    .sidebar h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #475569;
+      margin-bottom: 12px;
+    }
+    .table-item {
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .table-item:hover { border-color: #7c3aed; }
+    .table-item .tname { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+    .table-item .tmeta { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+    .suggestion-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: #94a3b8;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+      transition: all 0.2s;
+    }
+    .suggestion-btn:hover {
+      border-color: #7c3aed;
+      color: #e2e8f0;
+      background: #1a1d2e;
+    }
+
+    /* Main */
+    .main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .query-area {
+      padding: 24px 32px 20px;
+      border-bottom: 1px solid #2d3748;
+      background: #1a1d2e;
+    }
+    .query-area label {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+    #question {
+      flex: 1;
+      background: #0f1117;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 15px;
+      color: #e2e8f0;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #question:focus { border-color: #7c3aed; }
+    #question::placeholder { color: #475569; }
+
+    #ask-btn {
+      background: #7c3aed;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    #ask-btn:hover { background: #6d28d9; }
+    #ask-btn:disabled { background: #4c1d95; cursor: not-allowed; opacity: 0.6; }
+
+    .results-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 32px;
+    }
+
+    /* States */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #475569;
+      gap: 12px;
+    }
+    .empty-state .icon { font-size: 48px; }
+    .empty-state p { font-size: 15px; }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #94a3b8;
+      padding: 32px 0;
+    }
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid #334155;
+      border-top-color: #7c3aed;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Result card */
+    .result-card {
+      background: #1a1d2e;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .result-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #2d3748;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .result-header .question-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .result-meta {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+    .badge-purple { background: #4c1d95; color: #c4b5fd; }
+    .badge-green  { background: #064e3b; color: #34d399; }
+    .badge-gray   { background: #1e293b; color: #94a3b8; }
+
+    .result-body { padding: 16px 20px; }
+
+    .explanation {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 14px;
+    }
+
+    .sql-block {
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      color: #a78bfa;
+      margin-bottom: 16px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .warning {
+      background: #451a03;
+      border: 1px solid #92400e;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #fbbf24;
+      margin-bottom: 14px;
+    }
+
+    /* Table */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid #2d3748;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead { background: #0f1117; }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      border-bottom: 1px solid #2d3748;
+      white-space: nowrap;
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #1e293b;
+      color: #cbd5e1;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #1e293b; }
+
+    /* Chart */
+    .chart-wrap {
+      margin-top: 16px;
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 16px;
+      max-height: 320px;
+    }
+
+    /* Error */
+    .error-card {
+      background: #1a1d2e;
+      border: 1px solid #7f1d1d;
+      border-radius: 12px;
+      padding: 20px;
+      color: #fca5a5;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+    .error-card .err-title {
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 8px;
+      color: #f87171;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🗄️</span>
+  <h1>AskDB</h1>
+  <span>Ask your database in plain English</span>
+  <div id="db-badge">Connecting...</div>
+</header>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <h3>Tables</h3>
+    <div id="tables-list"><p style="color:#475569;font-size:12px">Loading...</p></div>
+
+    <h3 style="margin-top:24px">Suggestions</h3>
+    <div id="suggestions-list"><p style="color:#475569;font-size:12px">Loading...</p></div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="query-area">
+      <label>Ask anything about your data</label>
+      <div class="input-row">
+        <input
+          id="question"
+          type="text"
+          placeholder="e.g. Show me top 10 employees by salary"
+          autocomplete="off"
+        />
+        <button id="ask-btn" onclick="runQuery()">Ask ➜</button>
+      </div>
+    </div>
+
+    <div class="results-area" id="results-area">
+      <div class="empty-state">
+        <div class="icon">💬</div>
+        <p>Ask a question to see results</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  let chartInstance = null;
+
+  // Load sidebar on start
+  async function loadSidebar() {
+    try {
+      const [schemaRes, suggestRes] = await Promise.all([
+        fetch('/api/schema'),
+        fetch('/api/suggestions')
+      ]);
+      const schema = await schemaRes.json();
+      const suggest = await suggestRes.json();
+
+      // DB badge
+      document.getElementById('db-badge').innerHTML =
+        `<b>${schema.db_type.toUpperCase()}</b> · ${schema.tables.length} tables`;
+
+      // Tables
+      const tl = document.getElementById('tables-list');
+      tl.innerHTML = schema.tables.map(t => `
+        <div class="table-item" onclick="askTable('${t.name}')">
+          <div class="tname">📋 ${t.name}</div>
+          <div class="tmeta">${t.row_count.toLocaleString()} rows · ${t.column_count} cols</div>
+        </div>
+      `).join('');
+
+      // Suggestions
+      const sl = document.getElementById('suggestions-list');
+      sl.innerHTML = suggest.suggestions.map(s => `
+        <button class="suggestion-btn" onclick="askSuggestion('${s.replace(/'/g, "\\'")}')">${s}</button>
+      `).join('');
+
+    } catch (e) {
+      document.getElementById('db-badge').innerHTML = '<b style="color:#f87171">DB Error</b>';
+    }
+  }
+
+  function askTable(name) {
+    document.getElementById('question').value = `Show me all rows from ${name} limit 10`;
+    runQuery();
+  }
+
+  function askSuggestion(text) {
+    document.getElementById('question').value = text;
+    runQuery();
+  }
+
+  // Enter key
+  document.getElementById('question').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runQuery();
+  });
+
+  async function runQuery() {
+    const q = document.getElementById('question').value.trim();
+    if (!q) return;
+
+    const btn = document.getElementById('ask-btn');
+    const area = document.getElementById('results-area');
+
+    btn.disabled = true;
+    btn.textContent = 'Thinking...';
+
+    area.innerHTML = `
+      <div class="loading">
+        <div class="spinner"></div>
+        <span>Generating SQL and running query...</span>
+      </div>`;
+
+    try {
+      const res = await fetch('/api/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        area.innerHTML = `
+          <div class="error-card">
+            <div class="err-title">⚠️ Error</div>
+            ${data.detail || 'Something went wrong.'}
+          </div>`;
+        return;
+      }
+
+      renderResult(q, data, area);
+
+    } catch (e) {
+      area.innerHTML = `
+        <div class="error-card">
+          <div class="err-title">⚠️ Connection Error</div>
+          Could not reach the server. Is the backend running?
+        </div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Ask ➜';
+    }
+  }
+
+  function renderResult(question, data, area) {
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+
+    const warningsHtml = (data.warnings || []).map(w =>
+      `<div class="warning">⚠️ ${w}</div>`
+    ).join('');
+
+    const colsHtml = data.columns.map(c => `<th>${c}</th>`).join('');
+    const rowsHtml = data.rows.map(row =>
+      `<tr>${row.map(cell => `<td>${cell === null ? '<span style="color:#475569">NULL</span>' : cell}</td>`).join('')}</tr>`
+    ).join('');
+
+    area.innerHTML = `
+      <div class="result-card">
+        <div class="result-header">
+          <div class="question-text">💬 ${question}</div>
+          <div class="result-meta">
+            <span class="badge badge-green">${data.row_count} rows</span>
+            <span class="badge badge-gray">${data.execution_time_ms}ms</span>
+            ${data.chart_suggestion ? `<span class="badge badge-purple">📊 ${data.chart_suggestion} chart</span>` : ''}
+          </div>
+        </div>
+        <div class="result-body">
+          <div class="explanation">💡 ${data.explanation}</div>
+          ${warningsHtml}
+          <div class="sql-block">${data.sql}</div>
+          ${data.rows.length > 0 ? `
+            <div class="table-wrap">
+              <table>
+                <thead><tr>${colsHtml}</tr></thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+            ${data.chart_suggestion ? `<div class="chart-wrap"><canvas id="myChart"></canvas></div>` : ''}
+          ` : '<p style="color:#475569;font-size:14px">No rows returned.</p>'}
+        </div>
+      </div>`;
+
+    // Draw chart if suggested
+    if (data.chart_suggestion && data.rows.length > 0 && data.columns.length >= 2) {
+      const ctx = document.getElementById('myChart');
+      if (ctx) {
+        const labels = data.rows.map(r => String(r[0]));
+        const values = data.rows.map(r => parseFloat(r[1]) || 0);
+        const colors = labels.map((_, i) =>
+          `hsl(${(i * 47 + 260) % 360}, 70%, 60%)`
+        );
+
+        chartInstance = new Chart(ctx, {
+          type: data.chart_suggestion === 'line' ? 'line' : data.chart_suggestion === 'pie' ? 'pie' : 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: data.columns[1],
+              data: values,
+              backgroundColor: data.chart_suggestion === 'line' ? 'rgba(124,58,237,0.2)' : colors,
+              borderColor: data.chart_suggestion === 'line' ? '#7c3aed' : colors,
+              borderWidth: 2,
+              fill: data.chart_suggestion === 'line',
+              tension: 0.4,
+              pointBackgroundColor: '#7c3aed',
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: '#94a3b8', font: { size: 12 } } }
+            },
+            scales: data.chart_suggestion !== 'pie' ? {
+              x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+              y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }
+            } : {}
+          }
+        });
+      }
+    }
+  }
+
+  loadSidebar();
+</script>
+</body>
+</html>

@@ -8,8 +8,9 @@ from sqlalchemy import text
 from db_connector import get_db_type
 from security import QueryValidationError
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 SYSTEM_PROMPT = """You are an expert SQL query writer.
 Convert the natural language question into a correct 
@@ -56,7 +57,14 @@ class NLToSQLEngine:
         self.security = security_validator
         self.db_type = get_db_type()
 
-    def _call_ollama(self, question: str) -> str:
+    def _call_groq(self, question: str) -> str:
+        if not GROQ_API_KEY:
+            raise RuntimeError(
+                "GROQ_API_KEY is not set.\n"
+                "Fix: Add GROQ_API_KEY=your_key to your .env file.\n"
+                "Get a free key at https://console.groq.com"
+            )
+
         prompt = SYSTEM_PROMPT.format(
             db_type=self.db_type.upper(),
             date_hint=DATE_HINTS.get(self.db_type, ""),
@@ -64,27 +72,43 @@ class NLToSQLEngine:
         )
 
         payload = {
-            "model": OLLAMA_MODEL,
-            "prompt": f"{prompt}\n\nQuestion: {question}\n\nSQL:",
-            "stream": False,
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 400,
-                "stop": ["\n\n", "Question:", "--", "/*"],
-            },
+            "model": GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": f"Question: {question}\n\nSQL:"},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 400,
+            "stop": ["\n\n", "Question:", "--", "/*"],
+        }
+
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
         }
 
         try:
-            resp = requests.post(OLLAMA_URL, json=payload, timeout=90)
+            resp = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
             resp.raise_for_status()
-            raw = resp.json().get("response", "").strip()
+            raw = resp.json()["choices"][0]["message"]["content"].strip()
             return self._clean_sql(raw)
         except requests.ConnectionError as exc:
             raise RuntimeError(
-                "Ollama is not running.\nFix: ollama serve\nThen: ollama pull llama3.2"
+                "Could not reach Groq API. Check your internet connection."
             ) from exc
         except requests.Timeout as exc:
-            raise RuntimeError("Ollama timed out. Try a simpler question.") from exc
+            raise RuntimeError("Groq timed out. Try a simpler question.") from exc
+        except requests.HTTPError as exc:
+            status = exc.response.status_code
+            if status == 401:
+                raise RuntimeError(
+                    "Invalid GROQ_API_KEY. Check your key at https://console.groq.com"
+                ) from exc
+            if status == 429:
+                raise RuntimeError(
+                    "Groq rate limit hit. Wait a moment and try again."
+                ) from exc
+            raise RuntimeError(f"Groq API error {status}: {exc}") from exc
 
     def _clean_sql(self, raw: str) -> str:
         if not raw:
@@ -159,7 +183,7 @@ class NLToSQLEngine:
         warnings = []
         max_rows = int(os.getenv("MAX_ROWS", "200"))
 
-        sql = self._call_ollama(question)
+        sql = self._call_groq(question)
         if not sql or len(sql) < 7:
             raise ValueError("Could not generate SQL. Try rephrasing.")
 

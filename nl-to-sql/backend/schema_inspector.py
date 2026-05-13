@@ -165,7 +165,7 @@ class SchemaInspector:
                 if column["primary_key"]:
                     column_line += "  [PRIMARY KEY]"
                 if column["foreign_key"]:
-                    column_line += f"  [FK → {column['foreign_key']}]"
+                    column_line += f"  [FK -> {column['foreign_key']}]"
                 if not column["nullable"]:
                     column_line += "  [NOT NULL]"
 
@@ -175,16 +175,16 @@ class SchemaInspector:
                     samples = self.get_sample_values(table, column, limit=4)
                     if samples:
                         formatted_samples = ", ".join(
-                            f\"'{value.replace(\"'\", \"\\\\'\")}'\" for value in samples
+                            "'{}'".format(v.replace("'", "\\'")) for v in samples
                         )
-                        column_line += f"  — e.g. {formatted_samples}"
+                        column_line += f"  - e.g. {formatted_samples}"
 
                 lines.append(column_line)
 
             for column in columns:
                 if column["foreign_key"]:
                     relationships.append(
-                        f"{table}.{column['name']} → {column['foreign_key']}"
+                        f"{table}.{column['name']} -> {column['foreign_key']}"
                     )
 
             lines.append("")
