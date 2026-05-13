@@ -10,6 +10,33 @@ EXCLUDED_TABLES = [
     for table in os.getenv("EXCLUDED_TABLES", "").split(",")
     if table.strip()
 ]
+SKIP_SAMPLE_TYPES = {"BLOB", "BINARY", "BYTEA", "JSON"}
+DATE_TOKENS = {"date", "created", "updated", "time", "at", "timestamp"}
+NUMERIC_TOKENS = {
+    "amount",
+    "price",
+    "salary",
+    "total",
+    "count",
+    "score",
+    "qty",
+    "quantity",
+    "revenue",
+    "cost",
+    "balance",
+}
+CATEGORY_TOKENS = {
+    "status",
+    "type",
+    "category",
+    "plan",
+    "priority",
+    "role",
+    "department",
+    "gender",
+    "country",
+    "city",
+}
 
 
 class SchemaInspector:
@@ -54,16 +81,26 @@ class SchemaInspector:
 
         return results
 
-    def get_sample_values(self, table, column, limit=4) -> list:
+    def get_sample_values(self, table: str, column: dict | str, limit: int = 4) -> list:
         try:
+            if table not in self.get_tables():
+                return []
+
             column_name = column
             column_type = ""
             if isinstance(column, dict):
                 column_name = column.get("name")
                 column_type = str(column.get("type", ""))
 
+            if not column_name:
+                return []
+
+            column_names = {col["name"] for col in self.get_columns(table)}
+            if column_name not in column_names:
+                return []
+
             type_upper = column_type.upper()
-            if any(token in type_upper for token in ["BLOB", "BINARY", "BYTEA", "JSON"]):
+            if any(token in type_upper for token in SKIP_SAMPLE_TYPES):
                 return []
 
             query = text(
@@ -79,6 +116,8 @@ class SchemaInspector:
 
     def get_row_count(self, table: str) -> int:
         try:
+            if table not in self.get_tables():
+                return 0
             query = text(f"SELECT COUNT(*) FROM {table}")
             with engine.connect() as connection:
                 result = connection.execute(query).scalar()
@@ -200,33 +239,6 @@ class SchemaInspector:
         suggestions = []
         seen = set()
 
-        date_tokens = {"date", "created", "updated", "time", "at", "timestamp"}
-        numeric_tokens = {
-            "amount",
-            "price",
-            "salary",
-            "total",
-            "count",
-            "score",
-            "qty",
-            "quantity",
-            "revenue",
-            "cost",
-            "balance",
-        }
-        category_tokens = {
-            "status",
-            "type",
-            "category",
-            "plan",
-            "priority",
-            "role",
-            "department",
-            "gender",
-            "country",
-            "city",
-        }
-
         for table in self.get_tables()[:5]:
             base_question = f"How many rows are in {table}?"
             if base_question not in seen:
@@ -237,7 +249,7 @@ class SchemaInspector:
             column_names = [column["name"] for column in columns]
 
             if any(
-                token in name.lower() for name in column_names for token in date_tokens
+                token in name.lower() for name in column_names for token in DATE_TOKENS
             ):
                 question = f"Show me recent {table} from the last 30 days"
                 if question not in seen:
@@ -246,7 +258,7 @@ class SchemaInspector:
 
             for name in column_names:
                 lower_name = name.lower()
-                if any(token in lower_name for token in numeric_tokens):
+                if any(token in lower_name for token in NUMERIC_TOKENS):
                     avg_question = f"What is the average {name} in {table}?"
                     if avg_question not in seen:
                         suggestions.append(avg_question)
@@ -257,7 +269,7 @@ class SchemaInspector:
                         suggestions.append(top_question)
                         seen.add(top_question)
 
-                if any(token in lower_name for token in category_tokens):
+                if any(token in lower_name for token in CATEGORY_TOKENS):
                     group_question = f"Group {table} by {name} and show counts"
                     if group_question not in seen:
                         suggestions.append(group_question)
