@@ -11,6 +11,7 @@ EXCLUDED_TABLES = [
     if table.strip()
 ]
 SKIP_SAMPLE_TYPES = {"BLOB", "BINARY", "BYTEA", "JSON"}
+TEXT_TYPE_TOKENS = {"VARCHAR", "TEXT", "CHAR"}
 DATE_TOKENS = {"date", "created", "updated", "time", "at", "timestamp"}
 NUMERIC_TOKENS = {
     "amount",
@@ -81,6 +82,9 @@ class SchemaInspector:
 
         return results
 
+    def _quote_identifier(self, name: str) -> str:
+        return engine.dialect.identifier_preparer.quote(name)
+
     def get_sample_values(self, table: str, column: dict | str, limit: int = 4) -> list:
         try:
             if table not in self.get_tables():
@@ -103,9 +107,11 @@ class SchemaInspector:
             if any(token in type_upper for token in SKIP_SAMPLE_TYPES):
                 return []
 
+            safe_table = self._quote_identifier(table)
+            safe_column = self._quote_identifier(column_name)
             query = text(
-                f"SELECT DISTINCT {column_name} FROM {table} "
-                f"WHERE {column_name} IS NOT NULL LIMIT {int(limit)}"
+                f"SELECT DISTINCT {safe_column} FROM {safe_table} "
+                f"WHERE {safe_column} IS NOT NULL LIMIT {int(limit)}"
             )
             with engine.connect() as connection:
                 result = connection.execute(query).fetchall()
@@ -118,7 +124,8 @@ class SchemaInspector:
         try:
             if table not in self.get_tables():
                 return 0
-            query = text(f"SELECT COUNT(*) FROM {table}")
+            safe_table = self._quote_identifier(table)
+            query = text(f"SELECT COUNT(*) FROM {safe_table}")
             with engine.connect() as connection:
                 result = connection.execute(query).scalar()
             return int(result or 0)
@@ -159,7 +166,7 @@ class SchemaInspector:
 
                 type_upper = column["type"].upper()
                 is_key = column["primary_key"] or column["foreign_key"] is not None
-                if any(token in type_upper for token in ["VARCHAR", "TEXT", "CHAR"]) and not is_key:
+                if any(token in type_upper for token in TEXT_TYPE_TOKENS) and not is_key:
                     samples = self.get_sample_values(table, column, limit=4)
                     if samples:
                         formatted_samples = ", ".join(f"'{value}'" for value in samples)
