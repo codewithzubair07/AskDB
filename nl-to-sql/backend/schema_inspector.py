@@ -107,11 +107,15 @@ class SchemaInspector:
             if any(token in type_upper for token in SKIP_SAMPLE_TYPES):
                 return []
 
+            limit_value = int(limit)
+            if limit_value <= 0:
+                return []
+
             safe_table = self._quote_identifier(table)
             safe_column = self._quote_identifier(column_name)
             query = text(
                 f"SELECT DISTINCT {safe_column} FROM {safe_table} "
-                f"WHERE {safe_column} IS NOT NULL LIMIT {int(limit)}"
+                f"WHERE {safe_column} IS NOT NULL LIMIT {limit_value}"
             )
             with engine.connect() as connection:
                 result = connection.execute(query).fetchall()
@@ -169,7 +173,9 @@ class SchemaInspector:
                 if any(token in type_upper for token in TEXT_TYPE_TOKENS) and not is_key:
                     samples = self.get_sample_values(table, column, limit=4)
                     if samples:
-                        formatted_samples = ", ".join(f"'{value}'" for value in samples)
+                        formatted_samples = ", ".join(
+                            f\"'{value.replace(\"'\", \"\\\\'\")}'\" for value in samples
+                        )
                         column_line += f"  — e.g. {formatted_samples}"
 
                 lines.append(column_line)
